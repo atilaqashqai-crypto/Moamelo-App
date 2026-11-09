@@ -50,7 +50,7 @@ fun MainNav() {
         containerColor = Bg,
         bottomBar = {
             if (tabs.any { it.first == route }) {
-                NavigationBar(containerColor = BgCard) {
+                NavigationBar(containerColor = CardBg) {
                     tabs.forEach { tab ->
                         NavigationBarItem(
                             selected = route == tab.first,
