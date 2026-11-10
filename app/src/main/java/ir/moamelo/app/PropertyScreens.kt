@@ -142,6 +142,8 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
     var p by remember { mutableStateOf<JSONObject?>(null) }
     var images by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var viewer by remember { mutableStateOf<String?>(null) }
+    var shareDialog by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -173,20 +175,7 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
                         contentDescription = "علاقه‌مندی", tint = Brand
                     )
                 }
-                IconButton(onClick = {
-                    val text = buildString {
-                        append(prop.str("title") ?: "")
-                        append("\n").append(locationText(prop))
-                        append("\n").append(priceText(prop))
-                        val d = detailsText(prop)
-                        if (d.isNotEmpty()) append("\n").append(d)
-                        append("\n\nارسال شده از معاملو")
-                    }
-                    val i = Intent(Intent.ACTION_SEND)
-                    i.type = "text/plain"
-                    i.putExtra(Intent.EXTRA_TEXT, text)
-                    ctx.startActivity(Intent.createChooser(i, "اشتراک‌گذاری ملک"))
-                }) { Icon(Icons.Filled.Share, contentDescription = "اشتراک‌گذاری", tint = Brand) }
+                IconButton(onClick = { shareDialog = true }) { Icon(Icons.Filled.Share, contentDescription = "اشتراک‌گذاری", tint = Brand) }
                 IconButton(onClick = { nav.navigate("property_form/$type/$id") }) {
                     Icon(Icons.Filled.Edit, contentDescription = "ویرایش", tint = Brand)
                 }
@@ -287,6 +276,47 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
                 }
             }
         }
+    }
+
+    if (shareDialog && prop != null) {
+        AlertDialog(
+            onDismissRequest = { shareDialog = false },
+            title = { Text("اشتراک‌گذاری ملک") },
+            text = { Text("پوستر آماده با عکس، قیمت، لوگو و شماره تماس شما برای واتساپ، تلگرام و اینستاگرام ساخته می‌شود.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    shareDialog = false
+                    busy = true
+                    scope.launch {
+                        val me = Api.call("GET", "/auth/me").json.optJSONObject("user")
+                        val file = buildPoster(
+                            ctx, prop, images.firstOrNull()?.str("url"),
+                            me?.str("full_name"), me?.str("agency_name"), me?.str("phone")
+                        )
+                        busy = false
+                        if (file != null) sharePosterFile(ctx, file, propertyCaption(prop, me?.str("phone")))
+                        else error = "ساخت پوستر ناموفق بود."
+                    }
+                }) { Text("ارسال پوستر", color = Brand) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    shareDialog = false
+                    scope.launch {
+                        val me = Api.call("GET", "/auth/me").json.optJSONObject("user")
+                        shareText(ctx, propertyCaption(prop, me?.str("phone")))
+                    }
+                }) { Text("فقط متن") }
+            }
+        )
+    }
+    if (busy) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = { Text("در حال ساخت پوستر...") },
+            text = { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Brand) } }
+        )
     }
 
     viewer?.let { u ->

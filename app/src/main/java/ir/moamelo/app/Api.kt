@@ -25,6 +25,16 @@ object Api {
 
     fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 
+    suspend fun download(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                if (r.isSuccessful) r.body?.bytes() else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun imageUrl(path: String): String = if (path.startsWith("http")) path else HOST + path
 
     suspend fun uploadImages(propertyId: Int, images: List<ByteArray>): ApiResult = withContext(Dispatchers.IO) {
