@@ -73,6 +73,32 @@ fun PropertyCard(p: JSONObject, onClick: () -> Unit) {
 }
 
 @Composable
+fun CustomerMatchRow(m: JSONObject, onClick: () -> Unit) {
+    val c = m.getJSONObject("customer")
+    val reasons = m.optJSONArray("reasons")?.strings() ?: emptyList()
+    val mismatches = m.optJSONArray("mismatches")?.strings() ?: emptyList()
+    AppCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(c.str("full_name") ?: "", color = Ink, fontWeight = FontWeight.Bold)
+                Text((c.str("phone") ?: "").toFaDigits(), color = Muted, fontSize = 12.sp)
+                val budget = if (c.str("customer_type") == "buyer") {
+                    c.longOrNull("max_budget")?.let { "بودجه تا ${formatMoney(it)}" }
+                } else {
+                    val d = c.longOrNull("max_deposit")?.let { "ودیعه تا ${formatMoney(it)}" }
+                    val r = c.longOrNull("max_rent")?.let { "اجاره تا ${formatMoney(it)}" }
+                    listOfNotNull(d, r).joinToString(" | ").ifEmpty { null }
+                }
+                if (budget != null) Text(budget, color = Brand, fontSize = 12.sp)
+            }
+            ScoreBadge(m.optInt("score"))
+        }
+        reasons.take(3).forEach { Text("✓ $it", color = Green, fontSize = 12.sp) }
+        mismatches.take(2).forEach { Text("! $it", color = Warn, fontSize = 12.sp) }
+    }
+}
+
+@Composable
 fun PropertyListScreen(nav: NavController, type: String) {
     val isSale = type == "sale"
     var q by remember { mutableStateOf("") }
@@ -141,6 +167,7 @@ fun PropertyListScreen(nav: NavController, type: String) {
 fun PropertyDetailScreen(nav: NavController, id: Int) {
     var p by remember { mutableStateOf<JSONObject?>(null) }
     var images by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var custMatches by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var viewer by remember { mutableStateOf<String?>(null) }
     var shareDialog by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -157,6 +184,8 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
             p = r.json.optJSONObject("property")
             images = r.json.optJSONArray("images")?.objects() ?: emptyList()
             error = null
+            val mr = Api.call("GET", "/properties/$id/matches")
+            if (mr.ok) custMatches = mr.json.optJSONArray("matches")?.objects() ?: emptyList()
         } else error = r.error
         loading = false
     }
@@ -253,6 +282,20 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
                     InfoRow("تاریخ ثبت", jalali(prop.str("created_at")))
                     InfoRow("آخرین ویرایش", jalali(prop.str("updated_at")))
                 }
+                SectionTitle(
+                    (if (type == "sale") "خریداران مناسب این ملک" else "مستأجران مناسب این ملک") + " (${faNum(custMatches.size)})"
+                )
+                if (custMatches.isEmpty()) {
+                    Text(
+                        if (type == "sale") "فعلاً خریداری با مشخصات این ملک پیدا نشد. با ثبت مشتری جدید، سیستم خودکار بررسی می‌کند."
+                        else "فعلاً مستأجری با مشخصات این ملک پیدا نشد. با ثبت مشتری جدید، سیستم خودکار بررسی می‌کند.",
+                        color = Muted, fontSize = 13.sp
+                    )
+                }
+                custMatches.forEach { m ->
+                    CustomerMatchRow(m) { nav.navigate("customer/${m.getJSONObject("customer").optInt("id")}") }
+                    Spacer(Modifier.height(8.dp))
+                }
                 Spacer(Modifier.height(10.dp))
                 val ownerName = prop.str("owner_name")
                 val ownerPhone = prop.str("owner_phone")
@@ -289,9 +332,10 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
                     busy = true
                     scope.launch {
                         val me = Api.call("GET", "/auth/me").json.optJSONObject("user")
+                        val wm = Api.call("GET", "/subscription").json.optJSONObject("plan")?.optBoolean("watermark", false) ?: false
                         val file = buildPoster(
                             ctx, prop, images.firstOrNull()?.str("url"),
-                            me?.str("full_name"), me?.str("agency_name"), me?.str("phone")
+                            me?.str("full_name"), me?.str("agency_name"), me?.str("phone"), wm
                         )
                         busy = false
                         if (file != null) sharePosterFile(ctx, file, propertyCaption(prop, me?.str("phone")))
@@ -376,16 +420,23 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
     var dupMsg by remember { mutableStateOf<String?>(null) }
     var matchedMsg by remember { mutableStateOf<String?>(null) }
     var infoMsg by remember { mutableStateOf<String?>(null) }
+    var limitHit by remember { mutableStateOf(false) }
+    var maxImgs by remember { mutableStateOf(12) }
     var existing by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     val picked = remember { mutableStateListOf<Uri>() }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        val room = maxOf(0, 12 - existing.size - picked.size)
+        val room = maxOf(0, maxImgs - existing.size - picked.size)
         picked.addAll(uris.take(room))
     }
 
     fun t(k: String): String = text[k] ?: ""
+
+    LaunchedEffect(Unit) {
+        val sr = Api.call("GET", "/subscription")
+        if (sr.ok) maxImgs = sr.json.optJSONObject("plan")?.optInt("max_images", 12) ?: 12
+    }
 
     LaunchedEffect(Unit) {
         if (id != 0) {
@@ -420,6 +471,7 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
 
     fun save(force: Boolean) {
         error = null
+        limitHit = false
         if (t("title").isBlank()) { error = "عنوان ملک را وارد کنید."; return }
         if (t("city").isBlank()) { error = "شهر را وارد کنید."; return }
         if (!isRent) {
@@ -456,6 +508,7 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
                 }
             } else {
                 saving = false
+                limitHit = r.code == 403 && r.json.optString("code").startsWith("LIMIT")
                 if (r.code == 409) dupMsg = r.error else error = r.error
             }
         }
@@ -528,7 +581,7 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
             AppField(t("description"), { text["description"] = it }, "توضیحات", singleLine = false)
             AppField(t("notes"), { text["notes"] = it }, "یادداشت‌های اضافی", singleLine = false)
 
-            SectionTitle("عکس‌ها (حداکثر ۱۲)")
+            SectionTitle("عکس‌ها (حداکثر ${faNum(maxImgs)})")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 item { AddPhotoTile { picker.launch("image/*") } }
                 items(existing) { img ->
@@ -559,6 +612,11 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
             }
 
             error?.let { Text(it, color = Danger, modifier = Modifier.padding(vertical = 8.dp)) }
+            if (limitHit) {
+                OutlinedButton(onClick = { nav.navigate("plans") }, modifier = Modifier.fillMaxWidth()) {
+                    Text("مشاهده پلن‌ها و ارتقا", color = Brand)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             GoldButton(if (saving) "در حال ذخیره و ارسال..." else "ذخیره", enabled = !saving && !loading) { save(false) }
             Spacer(Modifier.height(30.dp))

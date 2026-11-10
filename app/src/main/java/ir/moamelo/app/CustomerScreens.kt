@@ -297,6 +297,7 @@ fun CustomerFormScreen(nav: NavController, id: Int) {
     var loading by remember { mutableStateOf(id != 0) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var limitHit by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun t(k: String): String = text[k] ?: ""
@@ -319,6 +320,7 @@ fun CustomerFormScreen(nav: NavController, id: Int) {
 
     fun save() {
         error = null
+        limitHit = false
         val body = JSONObject()
         for (k in C_TEXT_KEYS) body.put(k, t(k).trim())
         for (k in C_NUM_KEYS) {
@@ -336,7 +338,10 @@ fun CustomerFormScreen(nav: NavController, id: Int) {
                 val newId = r.json.optJSONObject("customer")?.optInt("id") ?: 0
                 nav.popBackStack()
                 if (id == 0 && newId != 0) nav.navigate("customer/$newId")
-            } else error = r.error
+            } else {
+                limitHit = r.code == 403 && r.json.optString("code").startsWith("LIMIT")
+                error = r.error
+            }
         }
     }
 
@@ -382,6 +387,11 @@ fun CustomerFormScreen(nav: NavController, id: Int) {
             AppField(t("notes"), { text["notes"] = it }, "یادداشت", singleLine = false)
 
             error?.let { Text(it, color = Danger, modifier = Modifier.padding(vertical = 8.dp)) }
+            if (limitHit) {
+                OutlinedButton(onClick = { nav.navigate("plans") }, modifier = Modifier.fillMaxWidth()) {
+                    Text("مشاهده پلن‌ها و ارتقا", color = Brand)
+                }
+            }
             Spacer(Modifier.height(8.dp))
             GoldButton(if (saving) "در حال ذخیره..." else "ذخیره", enabled = !saving && !loading) { save() }
             Spacer(Modifier.height(30.dp))

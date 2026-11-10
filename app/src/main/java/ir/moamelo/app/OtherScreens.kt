@@ -41,12 +41,12 @@ fun SupportScreen() {
 }
 
 @Composable
-fun AccountScreen() {
+fun AccountScreen(nav: NavController) {
     var name by remember { mutableStateOf("") }
     var agency by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var created by remember { mutableStateOf<String?>(null) }
+    var sub by remember { mutableStateOf<JSONObject?>(null) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
@@ -64,6 +64,8 @@ fun AccountScreen() {
                 phone = u.str("phone") ?: ""
             }
         } else error = r.error
+        val sr = Api.call("GET", "/subscription")
+        if (sr.ok) sub = sr.json
         loading = false
     }
 
@@ -105,12 +107,27 @@ fun AccountScreen() {
             Spacer(Modifier.height(14.dp))
             AppCard {
                 SectionTitle("اشتراک")
-                Text("طرح فعلی: رایگان", color = Ink, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("ارتقا و تمدید اشتراک، تاریخچه پرداخت و فاکتورها بزودی اضافه می‌شود.", color = Muted, fontSize = 13.sp)
+                val plan = sub?.optJSONObject("plan")
+                val usage = sub?.optJSONObject("usage")
+                val sb = sub?.optJSONObject("subscription")
+                Text("طرح فعلی: ${plan?.str("name") ?: "—"}", color = Ink, fontWeight = FontWeight.Bold)
+                if (sb != null) {
+                    val trial = if (sub?.optBoolean("is_trial") == true) " (دوره آزمایشی)" else ""
+                    Text("اعتبار تا ${jalali(sb.str("ends_at"))}$trial", color = Muted, fontSize = 13.sp)
+                }
+                if (plan != null && usage != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("ملک: ${usageText(usage.optInt("properties"), plan.intOrNull("max_properties"))}", color = Ink, fontSize = 13.sp)
+                    Text("مشتری: ${usageText(usage.optInt("customers"), plan.intOrNull("max_customers"))}", color = Ink, fontSize = 13.sp)
+                    Text("کاربران: ${usageText(usage.optInt("users"), sub?.intOrNull("max_users"))}", color = Ink, fontSize = 13.sp)
+                }
                 Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                    Text("ارتقای اشتراک — بزودی")
+                GoldButton("مشاهده و ارتقای پلن") { nav.navigate("plans") }
+                if ((plan?.intOrNull("max_users") ?: 1) > 1 || (sub?.intOrNull("max_users") ?: 1) > 1) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { nav.navigate("team") }, modifier = Modifier.fillMaxWidth()) {
+                        Text("مدیریت تیم آژانس", color = Brand)
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))

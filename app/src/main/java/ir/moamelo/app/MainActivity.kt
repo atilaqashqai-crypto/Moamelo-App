@@ -100,7 +100,7 @@ fun MainNav() {
     ) { pad ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
             composable("home") { HomeScreen(nav) }
-            composable("account") { AccountScreen() }
+            composable("account") { AccountScreen(nav) }
             composable("support") { SupportScreen() }
             composable("properties/{type}") { e ->
                 PropertyListScreen(nav, e.arguments?.getString("type") ?: "sale")
@@ -124,6 +124,8 @@ fun MainNav() {
             }
             composable("matches") { MatchesScreen(nav) }
             composable("notifications") { NotificationsScreen(nav) }
+            composable("plans") { PlansScreen(nav) }
+            composable("team") { TeamScreen(nav) }
         }
     }
 }

@@ -83,6 +83,7 @@ fun HomeScreen(nav: NavController) {
     var dash by remember { mutableStateOf<JSONObject?>(null) }
     var notes by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var me by remember { mutableStateOf<JSONObject?>(null) }
+    var sub by remember { mutableStateOf<JSONObject?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -93,9 +94,11 @@ fun HomeScreen(nav: NavController) {
             val r = Api.call("GET", "/dashboard")
             val n = Api.call("GET", "/notifications")
             val m = Api.call("GET", "/auth/me")
+            val sr = Api.call("GET", "/subscription")
             if (r.ok) { dash = r.json; error = null } else error = r.error
             if (n.ok) notes = (n.json.optJSONArray("notifications")?.objects() ?: emptyList())
             if (m.ok) me = m.json.optJSONObject("user")
+            if (sr.ok) sub = sr.json
             loading = false
         }
     }
@@ -135,11 +138,14 @@ fun HomeScreen(nav: NavController) {
             Row(
                 Modifier
                     .clip(RoundedCornerShape(50))
+                    .clickable { nav.navigate("plans") }
                     .border(1.dp, Brand.copy(alpha = 0.5f), RoundedCornerShape(50))
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("اشتراک فعال: رایگان", color = Brand, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                val pn = sub?.optJSONObject("plan")?.str("name") ?: "..."
+                val trial = if (sub?.optBoolean("is_trial") == true) " (آزمایشی)" else ""
+                Text("اشتراک فعال: $pn$trial", color = Brand, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
         if (loading && dash == null) {

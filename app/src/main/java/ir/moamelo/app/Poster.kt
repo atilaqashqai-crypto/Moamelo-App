@@ -105,7 +105,8 @@ suspend fun buildPoster(
     imageUrl: String?,
     agentName: String?,
     agency: String?,
-    phone: String?
+    phone: String?,
+    watermark: Boolean = false
 ): File? = withContext(Dispatchers.IO) {
     try {
         val bmp = Bitmap.createBitmap(PW, PH, Bitmap.Config.ARGB_8888)
@@ -145,6 +146,16 @@ suspend fun buildPoster(
             c.drawBitmap(logo, null, RectF((PW - s) / 2f, (PHOTO_H - s) / 2f, (PW + s) / 2f, (PHOTO_H + s) / 2f), fill)
         }
         c.restore()
+
+        // ---- watermark for the free plan ----
+        if (watermark) {
+            val wp = tp(130f, 0x66FFFFFF, true)
+            val ww = wp.measureText("معاملو")
+            c.save()
+            c.rotate(-25f, PW / 2f, PHOTO_H / 2f)
+            c.drawText("معاملو", (PW - ww) / 2f, PHOTO_H / 2f + 45f, wp)
+            c.restore()
+        }
 
         // ---- logo badge (top-left) ----
         val badge = Paint(Paint.ANTI_ALIAS_FLAG)
