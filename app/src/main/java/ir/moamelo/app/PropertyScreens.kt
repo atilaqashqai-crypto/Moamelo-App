@@ -2,9 +2,12 @@ package ir.moamelo.app
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +25,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,11 +43,16 @@ import org.json.JSONObject
 fun PropertyCard(p: JSONObject, onClick: () -> Unit) {
     AppCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            val cover = p.str("cover_image")
             Box(
-                Modifier.size(56.dp).clip(RoundedCornerShape(14.dp)).background(Soft),
+                Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)).background(Soft),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Apartment, contentDescription = null, tint = Brand)
+                if (cover != null) {
+                    RemoteImage(cover, Modifier.fillMaxSize())
+                } else {
+                    Icon(Icons.Filled.Apartment, contentDescription = null, tint = Brand)
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -127,6 +140,8 @@ fun PropertyListScreen(nav: NavController, type: String) {
 @Composable
 fun PropertyDetailScreen(nav: NavController, id: Int) {
     var p by remember { mutableStateOf<JSONObject?>(null) }
+    var images by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var viewer by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -136,7 +151,11 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
 
     LaunchedEffect(reload) {
         val r = Api.call("GET", "/properties/$id")
-        if (r.ok) { p = r.json.optJSONObject("property"); error = null } else error = r.error
+        if (r.ok) {
+            p = r.json.optJSONObject("property")
+            images = r.json.optJSONArray("images")?.objects() ?: emptyList()
+            error = null
+        } else error = r.error
         loading = false
     }
 
@@ -178,6 +197,20 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
         }
         if (loading) LoadingBox()
         error?.let { ErrorBox(it) { reload++ } }
+        if (prop != null && images.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(images) { img ->
+                    val u = img.str("url") ?: ""
+                    RemoteImage(
+                        u,
+                        Modifier.width(300.dp).height(210.dp).clip(RoundedCornerShape(18.dp)).clickable { viewer = u }
+                    )
+                }
+            }
+        }
         if (prop != null) {
             Column(Modifier.padding(16.dp)) {
                 AppCard {
@@ -256,6 +289,22 @@ fun PropertyDetailScreen(nav: NavController, id: Int) {
         }
     }
 
+    viewer?.let { u ->
+        Dialog(onDismissRequest = { viewer = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black).clickable { viewer = null },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = Api.imageUrl(u),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
@@ -296,7 +345,15 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
     var error by remember { mutableStateOf<String?>(null) }
     var dupMsg by remember { mutableStateOf<String?>(null) }
     var matchedMsg by remember { mutableStateOf<String?>(null) }
+    var infoMsg by remember { mutableStateOf<String?>(null) }
+    var existing by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    val picked = remember { mutableStateListOf<Uri>() }
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        val room = maxOf(0, 12 - existing.size - picked.size)
+        picked.addAll(uris.take(room))
+    }
 
     fun t(k: String): String = text[k] ?: ""
 
@@ -310,6 +367,7 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
                 for (k in FLAG_KEYS) flags[k] = p.optBoolean(k)
                 propType = p.str("property_type") ?: "apartment"
                 status = p.str("status") ?: "active"
+                existing = r.json.optJSONArray("images")?.objects() ?: emptyList()
             } else error = r.error
             loading = false
         }
@@ -345,14 +403,31 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
         scope.launch {
             val body = buildBody(force)
             val r = if (id == 0) Api.call("POST", "/properties", body) else Api.call("PUT", "/properties/$id", body)
-            saving = false
             if (r.ok) {
+                val pid = if (id == 0) (r.json.optJSONObject("property")?.optInt("id") ?: 0) else id
+                var upErr: String? = null
+                if (picked.isNotEmpty() && pid != 0) {
+                    val bytes = picked.toList().mapNotNull { uriToJpeg(ctx, it) }
+                    if (bytes.isEmpty()) {
+                        upErr = "عکس‌ها خوانده نشدند."
+                    } else {
+                        val ur = Api.uploadImages(pid, bytes)
+                        if (!ur.ok) upErr = ur.error
+                    }
+                }
+                saving = false
                 val m = r.json.optInt("matched_customers", 0)
-                if (id == 0 && m > 0) matchedMsg = "این ملک با مشخصات ${faNum(m)} مشتری شما مطابقت دارد."
-                else nav.popBackStack()
-            } else if (r.code == 409) {
-                dupMsg = r.error
-            } else error = r.error
+                if (upErr != null) {
+                    infoMsg = "ملک ذخیره شد ولی ارسال عکس‌ها ناموفق بود: $upErr\nاز بخش ویرایش ملک دوباره عکس‌ها را اضافه کنید."
+                } else if (id == 0 && m > 0) {
+                    matchedMsg = "این ملک با مشخصات ${faNum(m)} مشتری شما مطابقت دارد."
+                } else {
+                    nav.popBackStack()
+                }
+            } else {
+                saving = false
+                if (r.code == 409) dupMsg = r.error else error = r.error
+            }
         }
     }
 
@@ -423,6 +498,31 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
             AppField(t("description"), { text["description"] = it }, "توضیحات", singleLine = false)
             AppField(t("notes"), { text["notes"] = it }, "یادداشت‌های اضافی", singleLine = false)
 
+            SectionTitle("عکس‌ها (حداکثر ۱۲)")
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                item { AddPhotoTile { picker.launch("image/*") } }
+                items(existing) { img ->
+                    PhotoTile(onRemove = {
+                        scope.launch {
+                            val rr = Api.call("DELETE", "/properties/$id/images/${img.optInt("id")}")
+                            if (rr.ok) existing = existing.filter { e -> e.optInt("id") != img.optInt("id") }
+                        }
+                    }) {
+                        RemoteImage(img.str("url") ?: "", Modifier.fillMaxSize())
+                    }
+                }
+                items(picked.toList()) { uri ->
+                    PhotoTile(onRemove = { picked.remove(uri) }) {
+                        AsyncImage(
+                            model = uri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+
             if (id != 0) {
                 SectionTitle("وضعیت ملک")
                 ChipRow { propertyStatuses(type).forEach { s -> SelectChip(s.second, status == s.first) { status = s.first } } }
@@ -430,11 +530,19 @@ fun PropertyFormScreen(nav: NavController, type: String, id: Int) {
 
             error?.let { Text(it, color = Danger, modifier = Modifier.padding(vertical = 8.dp)) }
             Spacer(Modifier.height(8.dp))
-            GoldButton(if (saving) "در حال ذخیره..." else "ذخیره", enabled = !saving && !loading) { save(false) }
+            GoldButton(if (saving) "در حال ذخیره و ارسال..." else "ذخیره", enabled = !saving && !loading) { save(false) }
             Spacer(Modifier.height(30.dp))
         }
     }
 
+    infoMsg?.let { m ->
+        AlertDialog(
+            onDismissRequest = { infoMsg = null; nav.popBackStack() },
+            title = { Text("توجه") },
+            text = { Text(m) },
+            confirmButton = { TextButton(onClick = { infoMsg = null; nav.popBackStack() }) { Text("باشه") } }
+        )
+    }
     dupMsg?.let { m ->
         AlertDialog(
             onDismissRequest = { dupMsg = null },

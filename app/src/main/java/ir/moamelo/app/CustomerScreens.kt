@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -16,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,18 @@ fun MatchCard(m: JSONObject, onClick: () -> Unit) {
     val mismatches = m.optJSONArray("mismatches")?.strings() ?: emptyList()
     AppCard(onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            val cover = p.str("cover_image")
+            Box(
+                Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)).background(Soft),
+                contentAlignment = Alignment.Center
+            ) {
+                if (cover != null) {
+                    RemoteImage(cover, Modifier.fillMaxSize())
+                } else {
+                    Icon(Icons.Filled.Apartment, contentDescription = null, tint = Brand)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(p.str("title") ?: "", color = Ink, fontWeight = FontWeight.Bold, maxLines = 1)
                 Text(locationText(p), color = Muted, fontSize = 12.sp, maxLines = 1)

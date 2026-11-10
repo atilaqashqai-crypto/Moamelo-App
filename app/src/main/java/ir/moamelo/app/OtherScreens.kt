@@ -95,6 +95,15 @@ fun AccountScreen() {
             }
             Spacer(Modifier.height(14.dp))
             AppCard {
+                SectionTitle("ظاهر برنامه")
+                ChipRow {
+                    listOf("system" to "خودکار", "light" to "روشن", "dark" to "شب").forEach { m ->
+                        SelectChip(m.second, Session.themeMode == m.first) { Session.setTheme(m.first) }
+                    }
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            AppCard {
                 SectionTitle("اشتراک")
                 Text("طرح فعلی: رایگان", color = Ink, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))

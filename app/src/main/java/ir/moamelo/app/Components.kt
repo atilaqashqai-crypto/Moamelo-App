@@ -7,12 +7,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -190,6 +194,49 @@ fun PricePreview(value: Long, minRequired: Long?) {
                 "حداقل قیمت فروش ${formatMoney(minRequired)} است. صفرها را کامل وارد کنید.",
                 color = Danger, fontSize = 12.sp
             )
+        }
+    }
+}
+
+@Composable
+fun RemoteImage(path: String, modifier: Modifier = Modifier) {
+    AsyncImage(
+        model = Api.imageUrl(path),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = modifier
+    )
+}
+
+@Composable
+fun PhotoTile(onRemove: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+    Box(Modifier.size(92.dp).clip(RoundedCornerShape(14.dp)).background(Soft)) {
+        content()
+        Box(
+            Modifier
+                .align(Alignment.TopStart)
+                .padding(4.dp)
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(Color(0x99000000))
+                .clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = "حذف", tint = Color.White, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+fun AddPhotoTile(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        Modifier.size(92.dp).clip(shape).background(Soft).border(1.dp, Border, shape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Filled.AddAPhoto, contentDescription = null, tint = Brand)
+            Text("افزودن", color = Muted, fontSize = 11.sp)
         }
     }
 }

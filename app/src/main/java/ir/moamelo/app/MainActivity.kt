@@ -1,6 +1,10 @@
 package ir.moamelo.app
 
 import android.os.Bundle
+import android.view.Window
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.view.WindowCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,7 +29,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Session.init(this)
         setContent {
-            MoameloTheme {
+            val systemDark = isSystemInDarkTheme()
+            val dark = when (Session.themeMode) {
+                "dark" -> true
+                "light" -> false
+                else -> systemDark
+            }
+            MoameloTheme(dark) {
+                SystemBars(window, dark)
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Surface(modifier = Modifier.fillMaxSize(), color = Bg) {
                         if (Session.loggedIn) MainNav() else LoginScreen()
@@ -33,6 +44,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SystemBars(window: Window, dark: Boolean) {
+    val bgArgb = Bg.toArgb()
+    SideEffect {
+        window.statusBarColor = bgArgb
+        window.navigationBarColor = bgArgb
+        val c = WindowCompat.getInsetsController(window, window.decorView)
+        c.isAppearanceLightStatusBars = !dark
+        c.isAppearanceLightNavigationBars = !dark
     }
 }
 
